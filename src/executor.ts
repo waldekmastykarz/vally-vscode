@@ -227,6 +227,7 @@ export class VSCodeExecutor implements Executor {
         stimulusPrompt: stimulus.prompt,
         workDir: options.workDir,
       });
+      trajectory.output = visibleOutput;
       trajectory.stimulus = stimulus;
       trajectory.metadata.startedAt = startedAt;
       trajectory.metadata.completedAt = completedAt;

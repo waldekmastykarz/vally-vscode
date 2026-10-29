@@ -109,6 +109,8 @@ You don't need `chat.agent.maxRequests` in Autopilot. Local-harness settings suc
 
 Without Dev Proxy, evals still run, but their trajectories contain only the prompt and final response. Workspace graders such as the example above don't need network capture.
 
+With or without capture, output graders use the response exported by VS Code. Captured ATIF files retain the recorded traffic, which can represent completion text as tool calls rather than assistant messages.
+
 For detailed trajectories, install [Dev Proxy](https://aka.ms/devproxy) 4.0 or newer, trust its root certificate, and set the path to its root certificate in PEM format:
 
 ```sh
