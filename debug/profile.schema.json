@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Vally VS Code executor debug profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["prompt"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": {
+      "type": "string",
+      "description": "Run name used for the stimulus and the run folder. Defaults to the profile file name."
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Instruction sent to GitHub Copilot Chat."
+    },
+    "model": {
+      "type": "string",
+      "description": "Model name exactly as shown in the Copilot Chat model picker. Must be pinned. Omit to keep the current model."
+    },
+    "extensions": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[\\w-]+\\.[\\w-]+$" },
+      "description": "Extension IDs to enable for the trial workspace. All others are disabled. Requires sqlite3 on PATH."
+    },
+    "mcpServers": {
+      "type": "object",
+      "description": "MCP servers merged into the trial workspace's .vscode/mcp.json.",
+      "additionalProperties": { "type": "object" }
+    },
+    "env": {
+      "type": "object",
+      "description": "Extra environment variables for the launched VS Code process.",
+      "additionalProperties": { "type": "string" }
+    },
+    "workspace": {
+      "type": "string",
+      "description": "Fixture folder copied into a fresh trial workspace. Relative to this profile file. Omit for an empty workspace."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum time to wait for Copilot to finish. Defaults to 60 minutes to leave room for stepping through code."
+    },
+    "devProxy": {
+      "type": "boolean",
+      "description": "Capture traffic with Dev Proxy. Defaults to enabled when a certificate is available via devProxyPem or DEV_PROXY_PEM."
+    },
+    "devProxyPem": {
+      "type": "string",
+      "description": "Path to the Dev Proxy root certificate (PEM). Relative to this profile file. Overrides DEV_PROXY_PEM."
+    },
+    "executorConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Additional VS Code executor configuration.",
+      "properties": {
+        "executablePath": { "type": "string", "description": "Path to a nonstandard stable VS Code executable." },
+        "userDataPath": { "type": "string", "description": "Path to the stable VS Code User directory." }
+      }
+    }
+  }
+}

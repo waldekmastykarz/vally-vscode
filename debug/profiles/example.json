@@ -1,0 +1,6 @@
+{
+  "$schema": "../profile.schema.json",
+  "prompt": "Create a file named hello.txt that contains the text 'Hello from Vally'.",
+  "model": "auto",
+  "extensions": []
+}

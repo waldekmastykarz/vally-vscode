@@ -1,0 +1,62 @@
+{
+  "name": "vally-vscode",
+  "version": "0.1.0",
+  "description": "Evaluate GitHub Copilot Chat in real VS Code workspaces with Vally",
+  "keywords": [
+    "vally",
+    "vscode",
+    "github-copilot",
+    "evaluation",
+    "agent-skills",
+    "mcp",
+    "atif"
+  ],
+  "homepage": "https://github.com/waldekmastykarz/vally-vscode#readme",
+  "bugs": {
+    "url": "https://github.com/waldekmastykarz/vally-vscode/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/waldekmastykarz/vally-vscode.git"
+  },
+  "license": "MIT",
+  "author": "Waldek Mastykarz",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p debug/tsconfig.json"
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "peerDependencies": {
+    "@microsoft/vally": ">=0.16.0"
+  },
+  "dependencies": {
+    "atifact": "^0.14.0"
+  },
+  "devDependencies": {
+    "@microsoft/vally": "^0.20.0",
+    "@types/node": "^24.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.7"
+  }
+}
