@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createDevProxyConfig, parseDevProxyStartOutput, stopDevProxyRecording } from "./dev-proxy.js";
+import { createDevProxyConfig, DEFAULT_CAPTURE_URLS, parseDevProxyStartOutput, stopDevProxyRecording } from "./dev-proxy.js";
 
 describe("parseDevProxyStartOutput", () => {
   it("reads the detached process result after informational output", () => {
@@ -84,11 +84,40 @@ describe("createDevProxyConfig", () => {
   it("captures Copilot traffic without sensitive request data", () => {
     const config = createDevProxyConfig();
 
-    expect(config.urlsToWatch).toEqual(["https://api.enterprise.githubcopilot.com/*"]);
+    expect(config.urlsToWatch).toEqual(DEFAULT_CAPTURE_URLS);
     expect(config.harGeneratorPlugin).toMatchObject({
       includeSensitiveInformation: false,
       includeResponse: true,
     });
     expect(config).toMatchObject({ asSystemProxy: false, apiPort: 0, port: 0 });
+  });
+
+  it("watches custom URL patterns instead of the defaults", () => {
+    expect(createDevProxyConfig(["https://copilot.example.com/*"]).urlsToWatch).toEqual([
+      "https://copilot.example.com/*",
+    ]);
+  });
+
+  // Mirrors how Dev Proxy turns urlsToWatch patterns into regular expressions.
+  const isWatched = (url: string): boolean =>
+    DEFAULT_CAPTURE_URLS.some((pattern) =>
+      new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replaceAll("\\*", ".*")}$`, "i").test(url));
+
+  it.each([
+    "https://api.githubcopilot.com/chat/completions",
+    "https://api.individual.githubcopilot.com/responses",
+    "https://api.business.githubcopilot.com/v1/messages",
+    "https://api.enterprise.githubcopilot.com/v1/messages",
+    "https://copilot-api.contoso.ghe.com/responses",
+  ])("watches Copilot API endpoint %s by default", (url) => {
+    expect(isWatched(url)).toBe(true);
+  });
+
+  it.each([
+    "https://telemetry.individual.githubcopilot.com/telemetry",
+    "https://proxy.individual.githubcopilot.com/v1/engines/copilot-codex/completions",
+    "https://api.github.com/copilot_internal/v2/token",
+  ])("doesn't watch non-API host %s by default", (url) => {
+    expect(isWatched(url)).toBe(false);
   });
 });

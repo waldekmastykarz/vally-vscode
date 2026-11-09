@@ -119,7 +119,7 @@ export DEV_PROXY_PEM="$HOME/.config/dev-proxy/rootCert.pem"
 
 Use your actual PEM file location. The executor starts and stops its own Dev Proxy instance; you don't need to configure a socket or proxy port.
 
-Capture currently watches `api.enterprise.githubcopilot.com` only. If your Copilot account uses another API endpoint, detailed capture is not supported: leave `DEV_PROXY_PEM` unset to run without it. With capture enabled, a run with no matching traffic fails instead of producing a detailed trajectory.
+Capture watches the Copilot API hosts: `api.githubcopilot.com`, the per-plan hosts such as `api.business.githubcopilot.com` and `api.enterprise.githubcopilot.com`, and `copilot-api.<tenant>.ghe.com` for GitHub Enterprise Cloud with data residency. It doesn't decrypt other Copilot traffic, such as telemetry or inline completions. If your Copilot account uses another endpoint, set [`captureUrls`](#configuration). With capture enabled, a run with no matching traffic fails instead of producing a detailed trajectory.
 
 Each trial's `executor-artifacts` directory contains:
 
@@ -140,6 +140,23 @@ Most evals need no executor configuration. These options go under `defaults.exec
 | `executablePath` | Path to a nonstandard stable VS Code executable; alternatively set `VSCODE_PATH` |
 | `userDataPath` | Path to the stable VS Code `User` directory, not its parent |
 | `extensions` | Installed extension IDs to enable for the trial workspace; requires `sqlite3` on `PATH` |
+| `captureUrls` | [Dev Proxy URL patterns](https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/technical-reference/proxy-settings) to capture instead of the default Copilot API hosts. `*` matches any characters, including in the host name. Applies only when `DEV_PROXY_PEM` is set. |
+
+For example, to capture a custom Copilot endpoint in addition to the defaults, list all of them, because `captureUrls` replaces the defaults:
+
+```yaml
+defaults:
+  executor:
+    name: vscode
+    config:
+      captureUrls:
+        - https://api.githubcopilot.com/*
+        - https://api.*.githubcopilot.com/*
+        - https://copilot-api.*.ghe.com/*
+        - https://copilot.example.com/*
+```
+
+Watch only hosts that carry Copilot API traffic. Dev Proxy decrypts every watched request, and the recording includes it.
 
 ## Troubleshooting
 
@@ -150,7 +167,7 @@ Start with `executor.log`. When a run fails, the executor also attempts to save 
 | Can't connect to the controller | Install and enable `waldek.vscode-controller` in stable VS Code, and close every other stable VS Code window. |
 | `VS Code Copilot Chat timed out` | Check the [approval settings](#vs-code-settings), enterprise policy, and whether Chat is waiting for input. |
 | Model unavailable or mismatch | Use the exact model-picker name. The controller checks the served model and rejects silent substitutions. |
-| Fallback model or no HAR | Check that your account uses the captured endpoint and that VS Code trusts Dev Proxy's current certificate. |
+| Fallback model or no HAR | Check that your account's Copilot API endpoint matches the watched URLs listed in `executor.log` (set `captureUrls` if it doesn't) and that VS Code trusts Dev Proxy's current certificate. |
 
 If Dev Proxy regenerated its certificate, trust the new one and re-export the PEM (macOS paths shown):
 
@@ -168,7 +185,6 @@ Ctrl+C quits VS Code and cleans up the run, including saving the recording and r
 - **Desktop stable VS Code only.** No Insiders or headless execution.
 - **Single-turn stimuli only.** Attachments and simulated tool calls are not supported.
 - **Profile-dependent behavior.** Installed extensions, user settings, account policy, and available models affect results. Keep them consistent when comparing runs.
-- **Detailed capture targets the enterprise Copilot endpoint only.** Other endpoints can run without capture.
 
 ## License
 

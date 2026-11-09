@@ -14,11 +14,22 @@ describe("VSCodeExecutor", () => {
     const executor = new VSCodeExecutor();
     expect(() =>
       executor.validateConfig({
+        captureUrls: ["https://copilot.example.com/*"],
         executablePath: "/opt/code",
         extensions: ["github.copilot-chat"],
       }),
     ).not.toThrow();
   });
+
+  it.each([[[]], [["https://copilot.example.com/*", ""]], ["https://copilot.example.com/*"]])(
+    "rejects invalid captureUrls %j",
+    (captureUrls) => {
+      const executor = new VSCodeExecutor();
+      expect(() => executor.validateConfig({ captureUrls })).toThrow(
+        "VS Code executor config captureUrls must be a non-empty array of URL patterns",
+      );
+    },
+  );
 
   it("rejects unknown configuration", () => {
     const executor = new VSCodeExecutor();

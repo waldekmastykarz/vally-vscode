@@ -7,6 +7,17 @@ const execFileAsync = promisify(execFile);
 const START_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 30_000;
 
+/**
+ * Copilot API hosts: the default endpoint, the per-plan endpoints (individual, business, enterprise)
+ * and GitHub Enterprise Cloud with data residency. Dev Proxy matches `*` anywhere, including in the host.
+ * Other Copilot hosts, such as telemetry and the completions proxy, aren't trajectory data.
+ */
+export const DEFAULT_CAPTURE_URLS: readonly string[] = [
+  "https://api.githubcopilot.com/*",
+  "https://api.*.githubcopilot.com/*",
+  "https://copilot-api.*.ghe.com/*",
+];
+
 interface DevProxyStartResult {
   pid: number;
   proxyUrl: string;
@@ -27,11 +38,14 @@ export interface DevProxyCapture {
   dispose(): Promise<void>;
 }
 
-export async function startDevProxyCapture(captureDir: string): Promise<DevProxyCapture> {
+export async function startDevProxyCapture(
+  captureDir: string,
+  urlsToWatch: readonly string[] = DEFAULT_CAPTURE_URLS,
+): Promise<DevProxyCapture> {
   const absoluteCaptureDir = path.resolve(captureDir);
   await mkdir(absoluteCaptureDir, { recursive: true });
   const configPath = path.join(absoluteCaptureDir, "devproxyrc.json");
-  await writeFile(configPath, `${JSON.stringify(createDevProxyConfig(), null, 2)}\n`, "utf8");
+  await writeFile(configPath, `${JSON.stringify(createDevProxyConfig(urlsToWatch), null, 2)}\n`, "utf8");
   const startedAt = Date.now();
   const { stdout } = await execFileAsync(
     "devproxy",
@@ -82,6 +96,7 @@ export async function startDevProxyCapture(captureDir: string): Promise<DevProxy
       if (!harPath) {
         throw new Error(
           `Dev Proxy recorded no Copilot traffic, so it didn't generate a HAR file in ${absoluteCaptureDir}. ` +
+            `Watched URLs: ${urlsToWatch.join(", ")}. If your Copilot account uses another API endpoint, set captureUrls. ` +
             "If Copilot couldn't connect through Dev Proxy, check that DEV_PROXY_PEM contains Dev Proxy's current " +
             "root certificate and that the certificate is trusted (devproxy cert ensure)." +
             (result.logFile ? ` Dev Proxy log: ${result.logFile}` : ""),
@@ -141,7 +156,7 @@ export async function stopDevProxyRecording(api: DevProxyApi): Promise<void> {
   await waitForRecordingToStop(api);
 }
 
-export function createDevProxyConfig(): Record<string, unknown> {
+export function createDevProxyConfig(urlsToWatch: readonly string[] = DEFAULT_CAPTURE_URLS): Record<string, unknown> {
   return {
     $schema: "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.0.0/rc.schema.json",
     plugins: [
@@ -152,7 +167,7 @@ export function createDevProxyConfig(): Record<string, unknown> {
         configSection: "harGeneratorPlugin",
       },
     ],
-    urlsToWatch: ["https://api.enterprise.githubcopilot.com/*"],
+    urlsToWatch: [...urlsToWatch],
     harGeneratorPlugin: {
       $schema: "https://raw.githubusercontent.com/dotnet/dev-proxy/main/schemas/v4.0.0/hargeneratorplugin.schema.json",
       includeSensitiveInformation: false,

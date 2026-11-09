@@ -25,6 +25,7 @@ import {
 } from "./controller.js";
 import {
   copyHarToArtifacts,
+  DEFAULT_CAPTURE_URLS,
   startDevProxyCapture,
   type DevProxyCapture,
 } from "./dev-proxy.js";
@@ -42,6 +43,8 @@ const MODEL_SELECT_ATTEMPTS = 10;
 const HANDLED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 
 export interface VSCodeExecutorConfig {
+  /** Dev Proxy URL patterns to capture; replaces the default Copilot API hosts. */
+  captureUrls?: string[];
   executablePath?: string;
   extensions?: string[];
   userDataPath?: string;
@@ -61,6 +64,7 @@ function parseConfig(value: unknown): VSCodeExecutorConfig {
 
   const config = value as Record<string, unknown>;
   const allowed = new Set([
+    "captureUrls",
     "executablePath",
     "extensions",
     "userDataPath",
@@ -79,6 +83,14 @@ function parseConfig(value: unknown): VSCodeExecutorConfig {
     (!Array.isArray(config.extensions) || config.extensions.some((item) => typeof item !== "string"))
   ) {
     throw new Error("VS Code executor config extensions must be an array of extension IDs");
+  }
+  if (
+    config.captureUrls !== undefined &&
+    (!Array.isArray(config.captureUrls) ||
+      config.captureUrls.length === 0 ||
+      config.captureUrls.some((item) => typeof item !== "string" || !item.trim()))
+  ) {
+    throw new Error("VS Code executor config captureUrls must be a non-empty array of URL patterns");
   }
 
   return config as VSCodeExecutorConfig;
@@ -152,8 +164,10 @@ export class VSCodeExecutor implements Executor {
         if (!captureRoot) {
           throw new Error("DEV_PROXY_PEM is set, but Vally did not provide a session log directory");
         }
-        devProxyCapture = await startDevProxyCapture(path.join(captureRoot, "devproxy"));
-        await this.log(options, "Dev Proxy recording started");
+        devProxyCapture = await startDevProxyCapture(path.join(captureRoot, "devproxy"), config.captureUrls);
+        await this.log(options, "Dev Proxy recording started", {
+          urlsToWatch: config.captureUrls ?? DEFAULT_CAPTURE_URLS,
+        });
       } else {
         await this.log(options, "DEV_PROXY_PEM is not set; Dev Proxy trajectory capture is disabled");
       }

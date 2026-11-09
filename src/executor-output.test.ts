@@ -9,6 +9,7 @@ import { VSCodeExecutor } from "./executor.js";
 vi.mock("./atif.js", () => ({ convertHarToAtif: vi.fn() }));
 vi.mock("./dev-proxy.js", () => ({
   copyHarToArtifacts: vi.fn(),
+  DEFAULT_CAPTURE_URLS: ["https://api.githubcopilot.com/*"],
   startDevProxyCapture: vi.fn(),
 }));
 
@@ -106,6 +107,7 @@ server.listen(Number(process.env.VSCODE_CONTROLLER_PORT), "127.0.0.1");
         workDir: fixtureDir,
         timeout: 5_000,
         executorConfig: {
+          captureUrls: ["https://copilot.example.com/*"],
           executablePath,
           userDataPath: path.join(fixtureDir, "User"),
         },
@@ -119,6 +121,7 @@ server.listen(Number(process.env.VSCODE_CONTROLLER_PORT), "127.0.0.1");
     expect(trajectory.output).toBe(finalResponse);
     if (capture) {
       expect(JSON.parse(await readFile(path.join(artifactDir, "trajectory.atif.json"), "utf8"))).toEqual(recorded);
+      expect(startDevProxyCapture).toHaveBeenCalledWith(expect.any(String), ["https://copilot.example.com/*"]);
       expect(stop).toHaveBeenCalledOnce();
       expect(dispose).toHaveBeenCalledOnce();
     } else {

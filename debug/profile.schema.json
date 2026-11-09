@@ -57,7 +57,13 @@
       "description": "Additional VS Code executor configuration.",
       "properties": {
         "executablePath": { "type": "string", "description": "Path to a nonstandard stable VS Code executable." },
-        "userDataPath": { "type": "string", "description": "Path to the stable VS Code User directory." }
+        "userDataPath": { "type": "string", "description": "Path to the stable VS Code User directory." },
+        "captureUrls": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Dev Proxy URL patterns to capture instead of the default Copilot API hosts."
+        }
       }
     }
   }

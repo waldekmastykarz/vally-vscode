@@ -11,6 +11,7 @@ export { convertHarToAtif } from "./atif.js";
 export {
   copyHarToArtifacts,
   createDevProxyConfig,
+  DEFAULT_CAPTURE_URLS,
   parseDevProxyStartOutput,
   startDevProxyCapture,
 } from "./dev-proxy.js";
