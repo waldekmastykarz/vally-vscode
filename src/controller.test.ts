@@ -119,22 +119,17 @@ describe("controller client", () => {
 });
 
 describe("chat export", () => {
-  it("joins markdown blocks across requests and tool calls", () => {
+  it("joins markdown blocks across tool calls", () => {
     const text = getResponseText({
-      requests: [
-        {
-          response: [
-            { value: "Updating " },
-            { kind: "inlineReference", inlineReference: { path: "/work/src/app.ts" } },
-            { value: " now." },
-            { kind: "toolInvocationSerialized" },
-            { value: "Done." },
-          ],
-        },
-        { response: [{ value: "Continued." }] },
+      response: [
+        { value: "Updating " },
+        { kind: "inlineReference", inlineReference: { path: "/work/src/app.ts" } },
+        { value: " now." },
+        { kind: "toolInvocationSerialized" },
+        { value: "Done." },
       ],
     });
-    expect(text).toBe("Updating app.ts now.\nDone.\nContinued.");
+    expect(text).toBe("Updating app.ts now.\nDone.");
   });
 
   it("marshals file paths as VS Code URIs", () => {

@@ -48,12 +48,21 @@ export interface VSCodeExecutorConfig {
   executablePath?: string;
   extensions?: string[];
   userDataPath?: string;
+  /** Models of Copilot side-calls to keep out of the captured conversation; replaces the defaults. */
+  utilityModels?: string[];
 }
 
 export type DiagnosticLogger = (message: string, details?: unknown) => void | Promise<void>;
 
 interface McpConfiguration {
   servers?: Record<string, McpServerConfig>;
+}
+
+interface CompletedTurn {
+  prompt: string;
+  output: string;
+  startedAt: Date;
+  completedAt: Date;
 }
 
 function parseConfig(value: unknown): VSCodeExecutorConfig {
@@ -68,6 +77,7 @@ function parseConfig(value: unknown): VSCodeExecutorConfig {
     "executablePath",
     "extensions",
     "userDataPath",
+    "utilityModels",
   ]);
   for (const key of Object.keys(config)) {
     if (!allowed.has(key)) throw new Error(`Unknown VS Code executor config property: ${key}`);
@@ -92,6 +102,13 @@ function parseConfig(value: unknown): VSCodeExecutorConfig {
   ) {
     throw new Error("VS Code executor config captureUrls must be a non-empty array of URL patterns");
   }
+  if (
+    config.utilityModels !== undefined &&
+    (!Array.isArray(config.utilityModels) ||
+      config.utilityModels.some((item) => typeof item !== "string" || !item.trim()))
+  ) {
+    throw new Error("VS Code executor config utilityModels must be an array of model names");
+  }
 
   return config as VSCodeExecutorConfig;
 }
@@ -99,7 +116,8 @@ function parseConfig(value: unknown): VSCodeExecutorConfig {
 export class VSCodeExecutor implements Executor {
   readonly name = "vscode";
   readonly supportsPreparedWorkspace = true;
-  readonly supportsMultiTurn = false;
+  readonly supportsMultiTurn = true;
+  readonly supportsTurnCompletion = true;
   readonly supportsEnvVars = true;
 
   private executionQueue: Promise<void> = Promise.resolve();
@@ -190,11 +208,11 @@ export class VSCodeExecutor implements Executor {
       const status = await controller.call<{ vscodeVersion?: string }>("getStatus");
       const version = status.vscodeVersion ?? "unknown";
       await this.log(options, "VS Code workbench ready", status);
-      const visibleOutput = await Promise.race([
-        this.sendInstruction(
+      const turns = await Promise.race([
+        this.runConversation(
           controller,
           storagePath,
-          stimulus.prompt,
+          stimulus.turns?.length ? stimulus.turns : [stimulus.prompt],
           options.model,
           Math.min(options.timeout, options.maxAgentDurationMs ?? options.timeout),
           options,
@@ -202,6 +220,7 @@ export class VSCodeExecutor implements Executor {
         // Fails right away when VS Code exits instead of when the extension's connection drops.
         rejectOnExit(child),
       ]);
+      const visibleOutput = turns.at(-1)?.output ?? "";
       await this.closeVSCode(child, options, controller);
       controller = undefined;
       const completedAt = new Date();
@@ -212,7 +231,7 @@ export class VSCodeExecutor implements Executor {
         const harPath = options.sessionLog?.executorArtifactsDir
           ? await copyHarToArtifacts(capturedHarPath, options.sessionLog.executorArtifactsDir)
           : capturedHarPath;
-        atif = await convertHarToAtif(harPath);
+        atif = await convertHarToAtif(harPath, config.utilityModels);
         if (options.sessionLog?.executorArtifactsDir) {
           await writeFile(
             path.join(options.sessionLog.executorArtifactsDir, "trajectory.atif.json"),
@@ -229,10 +248,10 @@ export class VSCodeExecutor implements Executor {
           schema_version: "ATIF-v1.7",
           session_id: sessionID,
           agent: { name: "GitHub Copilot Chat", version, model_name: options.model },
-          steps: [
-            { step_id: 1, source: "user", message: stimulus.prompt, timestamp: startedAt.toISOString() },
-            { step_id: 2, source: "agent", message: visibleOutput, timestamp: completedAt.toISOString() },
-          ],
+          steps: turns.flatMap((turn, index) => [
+            { step_id: index * 2 + 1, source: "user" as const, message: turn.prompt, timestamp: turn.startedAt.toISOString() },
+            { step_id: index * 2 + 2, source: "agent" as const, message: turn.output, timestamp: turn.completedAt.toISOString() },
+          ]),
         };
       }
       validateAtifTrajectory(atif);
@@ -340,16 +359,16 @@ export class VSCodeExecutor implements Executor {
     }
   }
 
-  // Assumes VS Code is configured for Autopilot, so the request runs to completion without approvals.
-  private async sendInstruction(
+  // Assumes VS Code is configured for Autopilot, so each request runs to completion without approvals.
+  private async runConversation(
     controller: ControllerClient,
     storagePath: string,
-    instruction: string,
+    prompts: string[],
     model: string | undefined,
     timeoutMs: number,
     options: ExecutorOptions,
-  ): Promise<string> {
-    const deadline = Date.now() + timeoutMs;
+  ): Promise<CompletedTurn[]> {
+    let deadline = Date.now() + timeoutMs;
     await controller.call("chat.open");
     await this.log(options, "Copilot Chat opened");
 
@@ -376,10 +395,47 @@ export class VSCodeExecutor implements Executor {
       await this.log(options, "Copilot model selected", selected);
     }
 
-    const sending = controller.call<{ errorDetails?: unknown } | null>("chat.sendPrompt", { prompt: instruction });
+    const turns: Omit<CompletedTurn, "output">[] = [];
+    for (const [turn, prompt] of prompts.entries()) {
+      const final = turn === prompts.length - 1;
+      const turnDetails = prompts.length > 1 ? { turn: turn + 1, of: prompts.length } : undefined;
+      const timeoutMessage = `VS Code Copilot Chat timed out after ${timeoutMs}ms${turnDetails ? ` (turn ${turn + 1} of ${prompts.length})` : ""}`;
+      const startedAt = new Date();
+      await this.sendPrompt(controller, prompt, deadline, timeoutMessage, turnDetails, options);
+      await controller.call("chat.keepAllEdits");
+      turns.push({ prompt, startedAt, completedAt: new Date() });
+      if (options.onTurnComplete) {
+        const callbackStartedAt = Date.now();
+        await options.onTurnComplete({ turn, status: "completed", ...(final ? { final: true } : {}) });
+        // Vally's workspace capture between turns isn't agent work, so it doesn't count toward the timeout.
+        deadline += Date.now() - callbackStartedAt;
+      }
+    }
+
+    const requests = (await this.exportChat(controller, storagePath)).requests ?? [];
+    return turns.map((turn, index) => ({
+      ...turn,
+      // Any requests beyond the configured turns belong to the last one.
+      output: (index === turns.length - 1 ? requests.slice(index) : requests.slice(index, index + 1))
+        .map(getResponseText)
+        .filter(Boolean)
+        .join("\n"),
+    }));
+  }
+
+  private async sendPrompt(
+    controller: ControllerClient,
+    prompt: string,
+    deadline: number,
+    timeoutMessage: string,
+    turnDetails: { turn: number; of: number } | undefined,
+    options: ExecutorOptions,
+  ): Promise<void> {
+    if (Date.now() >= deadline) throw new Error(timeoutMessage);
+    const sending = controller.call<{ errorDetails?: unknown } | null>("chat.sendPrompt", { prompt });
     // After a timeout the pending call settles later; keep that from becoming an unhandled rejection.
     sending.catch(() => undefined);
-    await this.log(options, "Copilot instruction submitted");
+    await this.log(options, "Copilot instruction submitted", turnDetails);
     let timer: NodeJS.Timeout | undefined;
     const timedOut = new Promise<"timeout">((resolve) => {
       timer = setTimeout(() => resolve("timeout"), Math.max(0, deadline - Date.now()));
@@ -397,15 +453,12 @@ export class VSCodeExecutor implements Executor {
     }
     if (result === "timeout") {
       await controller.call("chat.cancel").catch(() => undefined);
-      throw new Error(`VS Code Copilot Chat timed out after ${timeoutMs}ms`);
+      throw new Error(timeoutMessage);
     }
     if (result?.errorDetails) {
       await this.log(options, "Copilot Chat response reported an error", result.errorDetails);
     }
-    await this.log(options, "Copilot finished working");
-
-    await controller.call("chat.keepAllEdits");
-    return getResponseText(await this.exportChat(controller, storagePath));
+    await this.log(options, "Copilot finished working", turnDetails);
   }
 
   private async selectModel(controller: ControllerClient, model: string, options: ExecutorOptions): Promise<unknown> {

@@ -64,7 +64,7 @@ Close other stable VS Code windows first, and don't use stable VS Code while the
 npx vally eval -e eval.yaml --executor-plugin vally-vscode
 ```
 
-The executor opens Vally's prepared trial workspace, sends the prompt, keeps the edits, and closes VS Code. Vally then runs your graders and reports the result. Trials run one at a time, even if Vally has multiple workers.
+The executor opens Vally's prepared trial workspace, sends the prompt, keeps the edits, and closes VS Code. For a multi-turn stimulus (`turns`), it sends each turn to the same chat and keeps the edits after each one; the timeout covers all turns. Vally then runs your graders and reports the result. Trials run one at a time, even if Vally has multiple workers.
 
 Vally resolves the plugin from the eval file's folder and its parent folders. Install it in your project root; Vally does not download plugins.
 
@@ -107,9 +107,9 @@ You don't need `chat.agent.maxRequests` in Autopilot. Local-harness settings suc
 
 ## Capture execution traces
 
-Without Dev Proxy, evals still run, but their trajectories contain only the prompt and final response. Workspace graders such as the example above don't need network capture.
+Without Dev Proxy, evals still run, but their trajectories contain only each turn's prompt and response. Workspace graders such as the example above don't need network capture.
 
-With or without capture, output graders use the response exported by VS Code. Captured ATIF files retain the recorded traffic, which can represent completion text as tool calls rather than assistant messages.
+With or without capture, output graders use the last turn's response exported by VS Code. Captured ATIF files retain the recorded traffic, which can represent completion text as tool calls rather than assistant messages.
 
 For detailed trajectories, install [Dev Proxy](https://aka.ms/devproxy) 4.0 or newer, trust its root certificate, and set the path to its root certificate in PEM format:
 
@@ -141,6 +141,7 @@ Most evals need no executor configuration. These options go under `defaults.exec
 | `userDataPath` | Path to the stable VS Code `User` directory, not its parent |
 | `extensions` | Installed extension IDs to enable for the trial workspace; requires `sqlite3` on `PATH` |
 | `captureUrls` | [Dev Proxy URL patterns](https://learn.microsoft.com/microsoft-cloud/dev/dev-proxy/technical-reference/proxy-settings) to capture instead of the default Copilot API hosts. `*` matches any characters, including in the host name. Applies only when `DEV_PROXY_PEM` is set. |
+| `utilityModels` | Models of Copilot's background requests, such as the frustration classifier it runs on follow-up turns, to keep out of the captured conversation. Matches any model name that contains an entry. Replaces the default, `["gpt-5.4-nano"]`; set it if Copilot switches models and captured multi-turn trajectories show extra user turns. Applies only when `DEV_PROXY_PEM` is set. |
 
 For example, to capture a custom Copilot endpoint in addition to the defaults, list all of them, because `captureUrls` replaces the defaults:
 
@@ -183,7 +184,7 @@ Ctrl+C quits VS Code and cleans up the run, including saving the recording and r
 
 - **One eval at a time.** VS Code runs one process per profile. The executor queues trials within one instance; starting a second eval from another terminal is not supported.
 - **Desktop stable VS Code only.** No Insiders or headless execution.
-- **Single-turn stimuli only.** Attachments and simulated tool calls are not supported.
+- **No attachments or simulated tool calls.** Stimuli that use `attachments` or `simulation` are rejected.
 - **Profile-dependent behavior.** Installed extensions, user settings, account policy, and available models affect results. Keep them consistent when comparing runs.
 
 ## License

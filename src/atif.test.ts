@@ -19,7 +19,7 @@ describe("convertHarToAtif", () => {
     mockedConvertFile.mockResolvedValue({ trajectory });
 
     await expect(convertHarToAtif("capture.har")).resolves.toBe(trajectory);
-    expect(mockedConvertFile).toHaveBeenCalledWith("capture.har", { format: "har" });
+    expect(mockedConvertFile).toHaveBeenCalledWith("capture.har", { format: "har", utilityModels: ["gpt-5.4-nano"] });
   });
 
 });

@@ -52,11 +52,6 @@ describe("VSCodeExecutor", () => {
     )).rejects.toThrow("VS Code Insiders is not supported");
   });
 
-  it("does not advertise unsupported multi-turn execution", () => {
-    const executor = new VSCodeExecutor();
-    expect(executor.supportsMultiTurn).toBe(false);
-  });
-
   it("reports a missing VS Code executable", async () => {
     vi.stubEnv("DEV_PROXY_PEM", "");
     try {

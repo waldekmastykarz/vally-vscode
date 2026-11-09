@@ -1,5 +1,5 @@
 import type { AtifTrajectory } from "@microsoft/vally";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { convertHarToAtif } from "./atif.js";
@@ -34,41 +34,8 @@ describe.skipIf(process.platform === "win32")("executor final response", () => {
     capture,
     capturedMessage,
   }) => {
-    const tmpRoot = path.join(process.cwd(), ".tmp");
-    await mkdir(tmpRoot, { recursive: true });
-    fixtureDir = await mkdtemp(path.join(tmpRoot, "executor-output-"));
-    const executablePath = path.join(fixtureDir, "vscode.cjs");
-    await writeFile(executablePath, `#!/usr/bin/env node
-const net = require("node:net");
-const { writeFileSync } = require("node:fs");
-const server = net.createServer((socket) => {
-  socket.setEncoding("utf8");
-  let buffer = "";
-  socket.on("data", (chunk) => {
-    buffer += chunk;
-    let index;
-    while ((index = buffer.indexOf("\\n")) !== -1) {
-      const { id, method, params } = JSON.parse(buffer.slice(0, index));
-      buffer = buffer.slice(index + 1);
-      let result = null;
-      if (method === "getStatus") result = { vscodeVersion: "1.144.0" };
-      if (method === "executeCommand") {
-        if (params.command === "workbench.action.chat.export") {
-          writeFileSync(params.args[0].path, JSON.stringify({
-            requests: [{ response: [{ value: ${JSON.stringify(finalResponse)} }] }],
-          }));
-        }
-        if (params.command === "workbench.action.quit") {
-          setTimeout(() => process.exit(0), 10);
-        }
-      }
-      socket.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\\n");
-    }
-  });
-});
-server.listen(Number(process.env.VSCODE_CONTROLLER_PORT), "127.0.0.1");
-`, { mode: 0o755 });
-
+    fixtureDir = await createFixtureDir();
+    const { executablePath } = await writeFakeVSCode(fixtureDir, [finalResponse]);
     vi.stubEnv("DEV_PROXY_PEM", capture ? path.join(fixtureDir, "certificate.pem") : "");
     const recorded: AtifTrajectory = {
       schema_version: "ATIF-v1.7",
@@ -128,4 +95,90 @@ server.listen(Number(process.env.VSCODE_CONTROLLER_PORT), "127.0.0.1");
       expect(startDevProxyCapture).not.toHaveBeenCalled();
     }
   });
+
+  it("sends each turn to the same chat and reports turn completion", async () => {
+    vi.stubEnv("DEV_PROXY_PEM", "");
+    fixtureDir = await createFixtureDir();
+    const { executablePath, callLog } = await writeFakeVSCode(fixtureDir, ["Created app.ts", "Added tests"]);
+    const onTurnComplete = vi.fn(async ({ turn }: { turn: number }) => {
+      await appendFile(callLog, `turnComplete ${turn}\n`);
+    });
+
+    const trajectory = await new VSCodeExecutor().execute(
+      { name: "multi-turn", prompt: "Create app.ts\n\nAdd tests", turns: ["Create app.ts", "Add tests"] },
+      {
+        workDir: fixtureDir,
+        timeout: 5_000,
+        executorConfig: { executablePath, userDataPath: path.join(fixtureDir, "User") },
+        onTurnComplete,
+      },
+    );
+
+    const calls = (await readFile(callLog, "utf8")).trim().split("\n");
+    expect(calls.slice(calls.indexOf("chat.newChat"), calls.indexOf("turnComplete 1") + 1)).toEqual([
+      "chat.newChat",
+      "chat.sendPrompt Create app.ts",
+      "chat.keepAllEdits",
+      "turnComplete 0",
+      "chat.sendPrompt Add tests",
+      "chat.keepAllEdits",
+      "turnComplete 1",
+    ]);
+    expect(onTurnComplete.mock.calls.map(([completion]) => completion)).toEqual([
+      { turn: 0, status: "completed" },
+      { turn: 1, status: "completed", final: true },
+    ]);
+    expect(trajectory.output).toBe("Added tests");
+    expect(trajectory.events
+      .filter(({ type }) => type === "user_message" || type === "assistant_message")
+      .map(({ type, turn }) => [type, turn])).toEqual([
+      ["user_message", 0],
+      ["assistant_message", 0],
+      ["user_message", 1],
+      ["assistant_message", 1],
+    ]);
+  });
 });
+
+async function createFixtureDir(): Promise<string> {
+  const tmpRoot = path.join(process.cwd(), ".tmp");
+  await mkdir(tmpRoot, { recursive: true });
+  return mkdtemp(path.join(tmpRoot, "executor-output-"));
+}
+
+// Writes a fake VS Code that serves the controller protocol, logs each call, and exports one request per response.
+async function writeFakeVSCode(dir: string, responses: string[]): Promise<{ executablePath: string; callLog: string }> {
+  const executablePath = path.join(dir, "vscode.cjs");
+  const callLog = path.join(dir, "calls.log");
+  const requests = responses.map((value) => ({ response: [{ value }] }));
+  await writeFile(executablePath, `#!/usr/bin/env node
+const net = require("node:net");
+const { appendFileSync, writeFileSync } = require("node:fs");
+const server = net.createServer((socket) => {
+  socket.setEncoding("utf8");
+  let buffer = "";
+  socket.on("data", (chunk) => {
+    buffer += chunk;
+    let index;
+    while ((index = buffer.indexOf("\\n")) !== -1) {
+      const { id, method, params } = JSON.parse(buffer.slice(0, index));
+      buffer = buffer.slice(index + 1);
+      appendFileSync(${JSON.stringify(callLog)}, [method, params?.prompt ?? params?.command].filter(Boolean).join(" ") + "\\n");
+      let result = null;
+      if (method === "getStatus") result = { vscodeVersion: "1.144.0" };
+      if (method === "executeCommand") {
+        if (params.command === "workbench.action.chat.export") {
+          writeFileSync(params.args[0].path, JSON.stringify({ requests: ${JSON.stringify(requests)} }));
+        }
+        if (params.command === "workbench.action.quit") {
+          setTimeout(() => process.exit(0), 10);
+        }
+      }
+      socket.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\\n");
+    }
+  });
+});
+server.listen(Number(process.env.VSCODE_CONTROLLER_PORT), "127.0.0.1");
+`, { mode: 0o755 });
+  return { executablePath, callLog };
+}

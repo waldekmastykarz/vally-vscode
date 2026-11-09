@@ -156,25 +156,23 @@ type ExportedResponsePart = {
   inlineReference?: { path?: string; uri?: { path?: string } };
 };
 
-/** Returns the markdown of all responses in the chat, one entry per markdown block, like the chat view renders it. */
-export function getResponseText(chat: ExportedChat): string {
+/** Returns the markdown of a request's response, one line per markdown block, like the chat view renders it. */
+export function getResponseText(request: ExportedRequest): string {
   const blocks: string[] = [];
-  for (const request of chat.requests ?? []) {
-    let current: string | undefined;
-    for (const part of request.response ?? []) {
-      // The export flattens markdown parts to their `IMarkdownString`, which has no `kind`.
-      if (part.kind === undefined && typeof part.value === "string") {
-        current = (current ?? "") + part.value;
-      } else if (part.kind === "inlineReference" && current !== undefined) {
-        const refPath = part.inlineReference?.path ?? part.inlineReference?.uri?.path ?? "";
-        current += part.name ?? refPath.split("/").pop() ?? "";
-      } else if (current !== undefined) {
-        blocks.push(current);
-        current = undefined;
-      }
+  let current: string | undefined;
+  for (const part of request.response ?? []) {
+    // The export flattens markdown parts to their `IMarkdownString`, which has no `kind`.
+    if (part.kind === undefined && typeof part.value === "string") {
+      current = (current ?? "") + part.value;
+    } else if (part.kind === "inlineReference" && current !== undefined) {
+      const refPath = part.inlineReference?.path ?? part.inlineReference?.uri?.path ?? "";
+      current += part.name ?? refPath.split("/").pop() ?? "";
+    } else if (current !== undefined) {
+      blocks.push(current);
+      current = undefined;
     }
-    if (current !== undefined) blocks.push(current);
   }
+  if (current !== undefined) blocks.push(current);
   return blocks.join("\n").trim();
 }
 
