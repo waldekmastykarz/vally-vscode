@@ -38,6 +38,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_CLOSE_TIMEOUT_MS = 30_000;
+const QUIT_SETTLE_MS = 3_000;
 const CONTROLLER_CONNECT_TIMEOUT_MS = 120_000;
 const MODEL_SELECT_ATTEMPTS = 10;
 const HANDLED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
@@ -127,6 +128,8 @@ export class VSCodeExecutor implements Executor {
   private interruption?: NodeJS.Signals;
   private readonly closing = new WeakMap<ChildProcess, Promise<void>>();
   private readonly onSignal = (signal: NodeJS.Signals): void => this.interrupt(signal);
+
+  protected readonly quitSettleMs: number = QUIT_SETTLE_MS;
 
   constructor(private readonly logger?: DiagnosticLogger) { }
 
@@ -587,12 +590,11 @@ export class VSCodeExecutor implements Executor {
     try {
       if (!isRunning(child)) return;
       if (controller) {
-        // VS Code asks for confirmation while a chat or agent session is still in progress,
-        // which the Copilot CLI agent session can briefly be after the response completes.
-        await controller.call("executeCommand", {
-          command: "setContext",
-          args: ["chatSkipRequestInProgressMessage", true],
-        });
+        // VS Code asks to confirm quitting while its session list shows a Copilot CLI session as
+        // in progress, which lags the response by a second or two. Once shutdown starts, the list
+        // stops updating, so the prompt never goes away. Extensions can't observe the list, so wait.
+        await waitForExit(child, this.quitSettleMs).catch(() => undefined);
+        if (!isRunning(child)) return;
         // VS Code exits before it can respond, which closes the connection.
         controller.call("executeCommand", { command: "workbench.action.quit" }).catch(() => undefined);
       } else {

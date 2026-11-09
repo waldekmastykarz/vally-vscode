@@ -14,6 +14,10 @@ vi.mock("./dev-proxy.js", () => ({
 }));
 
 const finalResponse = "VALLY_VSCODE_SMOKE_OK";
+
+class TestExecutor extends VSCodeExecutor {
+  protected override readonly quitSettleMs = 0;
+}
 let fixtureDir: string | undefined;
 
 afterEach(async () => {
@@ -67,7 +71,7 @@ describe.skipIf(process.platform === "win32")("executor final response", () => {
     vi.mocked(convertHarToAtif).mockResolvedValue(recorded);
 
     const artifactDir = path.join(fixtureDir, "artifacts");
-    const executor = new VSCodeExecutor();
+    const executor = new TestExecutor();
     const trajectory = await executor.execute(
       { name: "final-response", prompt: "Create the requested files" },
       {
@@ -104,7 +108,7 @@ describe.skipIf(process.platform === "win32")("executor final response", () => {
       await appendFile(callLog, `turnComplete ${turn}\n`);
     });
 
-    const trajectory = await new VSCodeExecutor().execute(
+    const trajectory = await new TestExecutor().execute(
       { name: "multi-turn", prompt: "Create app.ts\n\nAdd tests", turns: ["Create app.ts", "Add tests"] },
       {
         workDir: fixtureDir,
