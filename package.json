@@ -56,7 +56,7 @@
     "@microsoft/vally": "^0.20.0",
     "@types/node": "^24.19.2",
     "tsx": "^4.23.15",
-    "typescript": "^5.9.2",
+    "typescript": "^7.0.2",
     "vitest": "^5.1.0"
   }
 }
