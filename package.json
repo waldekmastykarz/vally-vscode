@@ -50,7 +50,7 @@
     "@microsoft/vally": ">=0.16.0"
   },
   "dependencies": {
-    "atifact": "^0.14.0"
+    "atifact": "^0.15.0"
   },
   "devDependencies": {
     "@microsoft/vally": "^0.20.0",
