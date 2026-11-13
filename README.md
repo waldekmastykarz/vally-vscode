@@ -4,6 +4,8 @@
 
 `vally-vscode` runs [Vally](https://aka.ms/vally) evals against GitHub Copilot Chat in the real VS Code desktop app. Test your agent skills, custom instructions, and MCP tools where developers actually use them, then grade the results with Vally.
 
+![Vally running an eval from the terminal while GitHub Copilot Chat works in VS Code](assets/vally-vscode.png)
+
 - **For developers:** check whether a change to your skill, instructions, or tools still produces the files and responses you expect.
 - **For eval authors:** reuse Vally's prepared workspaces and graders, select a Copilot model, and inspect what happened when a trial fails.
 - **No UI click scripts:** the public [VS Code Controller](https://marketplace.visualstudio.com/items?itemName=waldek.vscode-controller) extension drives Chat over an authenticated local socket.
